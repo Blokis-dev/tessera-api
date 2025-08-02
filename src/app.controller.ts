@@ -1,8 +1,8 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AppService } from './app.service';
 import { DatabaseService } from './database/database.service';
-import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { JwtCookieAuthGuard } from './auth/guards/jwt-cookie-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { Roles } from './auth/decorators/roles.decorator';
 import { GetUser } from './auth/decorators/get-user.decorator';
@@ -35,22 +35,20 @@ export class AppController {
   }
 
   @Get('protected')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
-  @ApiOperation({ summary: 'Endpoint protegido que requiere autenticación' })
+  @UseGuards(JwtCookieAuthGuard)
+  @ApiOperation({ summary: 'Endpoint protegido que requiere autenticación con cookie' })
   @ApiResponse({ status: 200, description: 'Mensaje personalizado para usuario autenticado' })
-  @ApiResponse({ status: 401, description: 'Token JWT inválido o faltante' })
+  @ApiResponse({ status: 401, description: 'Cookie JWT inválida o faltante' })
   getProtected(@GetUser() user: any): string {
     return `Hello ${user.email}, this is a protected route!`;
   }
 
   @Get('admin-only')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtCookieAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Endpoint solo para administradores' })
   @ApiResponse({ status: 200, description: 'Mensaje para administradores' })
-  @ApiResponse({ status: 401, description: 'Token JWT inválido o faltante' })
+  @ApiResponse({ status: 401, description: 'Cookie JWT inválida o faltante' })
   @ApiResponse({ status: 403, description: 'Acceso denegado - rol insuficiente' })
   getAdminOnly(@GetUser() user: any): string {
     return `Hello admin ${user.email}!`;

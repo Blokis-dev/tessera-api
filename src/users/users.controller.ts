@@ -1,6 +1,6 @@
 import { Controller, Get, UseGuards, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { JwtCookieAuthGuard } from '../auth/guards/jwt-cookie-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { GetUser } from '../auth/decorators/get-user.decorator';
@@ -12,8 +12,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('profile')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtCookieAuthGuard)
   @ApiOperation({ summary: 'Obtener perfil del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Perfil del usuario' })
   getProfile(@GetUser() user: any) {
@@ -21,9 +20,8 @@ export class UsersController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtCookieAuthGuard, RolesGuard)
   @Roles('admin')
-  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Listar todos los usuarios (solo admins)' })
   @ApiResponse({ status: 200, description: 'Lista de usuarios' })
   async findAll() {
@@ -31,8 +29,7 @@ export class UsersController {
   }
 
   @Get(':email')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtCookieAuthGuard)
   @ApiOperation({ summary: 'Buscar usuario por email' })
   @ApiResponse({ status: 200, description: 'Usuario encontrado' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })

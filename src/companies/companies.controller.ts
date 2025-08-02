@@ -2,7 +2,7 @@ import { Controller, Post, Body, Get, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyWithOwnerDto } from './dto/create-company.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { JwtCookieAuthGuard } from '../auth/guards/jwt-cookie-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 
@@ -42,7 +42,7 @@ export class CompaniesController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtCookieAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all institutions (Admin only)' })
@@ -53,7 +53,7 @@ export class CompaniesController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtCookieAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get institution by ID' })
   @ApiResponse({ status: 200, description: 'Institution details' })
