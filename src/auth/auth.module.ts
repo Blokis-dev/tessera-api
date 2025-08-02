@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtCookieStrategy } from './strategies/jwt-cookie.strategy';
 import { EncryptionService } from './encryption.service';
+import { PasswordGeneratorService } from './password-generator.service';
 import { DatabaseModule } from '../database/database.module';
 
 @Module({
@@ -22,7 +23,7 @@ import { DatabaseModule } from '../database/database.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtCookieStrategy, EncryptionService],
-  exports: [AuthService, EncryptionService],
+  providers: [AuthService, JwtCookieStrategy, EncryptionService, PasswordGeneratorService],
+  exports: [AuthService, EncryptionService, PasswordGeneratorService],
 })
 export class AuthModule {}

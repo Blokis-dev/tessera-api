@@ -1,7 +1,9 @@
-import { Controller, Post, Body, HttpException, HttpStatus, Get, UseGuards, Request, Response, Res } from '@nestjs/common';
+import { Controller, Post, Body, HttpException, HttpStatus, Get, UseGuards, Request, Response, Res, Patch, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtCookieAuthGuard } from './guards/jwt-cookie-auth.guard';
+import { GetUser } from './decorators/get-user.decorator';
+import { FirstTimeLoginDto, ChangePasswordDto } from './dto/password-change.dto';
 import type { LoginDto } from './auth.service';
 import type { Response as ExpressResponse } from 'express';
 
@@ -47,6 +49,7 @@ export class AuthController {
             institution_id: { type: 'string', example: 'uuid-string' },
             institution_name: { type: 'string', example: 'Universidad Nacional' },
             status: { type: 'string', example: 'verified' },
+            first_time_login: { type: 'boolean', example: false },
           },
         },
         message: { type: 'string', example: 'Login successful - JWT set in cookie' },
@@ -56,6 +59,18 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description: 'Credenciales inválidas',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Primer login requerido - Usuario debe cambiar contraseña',
+    schema: {
+      type: 'object',
+      properties: {
+        error: { type: 'string', example: 'FIRST_TIME_LOGIN_REQUIRED' },
+        message: { type: 'string', example: 'User must change password on first login' },
+        action: { type: 'string', example: 'redirect_to_first_time_login' },
+      },
+    },
   })
   async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) response: ExpressResponse) {
     try {
@@ -82,6 +97,18 @@ export class AuthController {
         message: 'Login successful - Secure tokens set in cookies'
       };
     } catch (error) {
+      if (error.message === 'REDIRECT_TO_FIRST_TIME_LOGIN') {
+        throw new HttpException(
+          {
+            error: 'FIRST_TIME_LOGIN_REQUIRED',
+            message: 'User must complete first-time login to set password',
+            action: 'redirect_to_first_time_login',
+            redirectUrl: `${process.env.FRONTEND_URL || 'http://localhost:3001'}/login?first-time=true&email=${encodeURIComponent(loginDto.email)}`
+          },
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      
       throw new HttpException(
         'Invalid credentials',
         HttpStatus.UNAUTHORIZED,
@@ -156,5 +183,117 @@ export class AuthController {
       verified: true,
       message: 'Token from cookie is valid'
     };
+  }
+
+  @Post('first-time-login')
+  @ApiOperation({ 
+    summary: 'Cambiar contraseña en el primer login (One-time use)',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Contraseña cambiada exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Password changed successfully. Please login with your new password.' },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'uuid-string' },
+            email: { type: 'string', example: 'user@institution.com' },
+            full_name: { type: 'string', example: 'Usuario Institucional' },
+            role: { type: 'string', example: 'owner' },
+            status: { type: 'string', example: 'verified' },
+            first_time_login: { type: 'boolean', example: false },
+          },
+        },
+        requiresNewLogin: { type: 'boolean', example: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos, contraseña temporal incorrecta, o primer login ya completado' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  async firstTimeLogin(@Body() firstLoginDto: FirstTimeLoginDto) {
+    try {
+      const result = await this.authService.firstTimeLogin(firstLoginDto);
+      return result;
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to change password',
+        error.message.includes('not found') ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Patch('change-password')
+  @UseGuards(JwtCookieAuthGuard)
+  @ApiOperation({ 
+    summary: 'Cambiar contraseña para usuarios autenticados',
+    description: 'Permite a usuarios autenticados cambiar su contraseña actual. Solo pueden cambiar su propia contraseña.'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Contraseña cambiada exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Password changed successfully. Please login with your new password.' },
+        requiresNewLogin: { type: 'boolean', example: true },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Contraseña actual incorrecta o nueva contraseña inválida' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'No autorizado - solo puedes cambiar tu propia contraseña' })
+  async changePassword(@GetUser() user: any, @Body() changePasswordDto: ChangePasswordDto) {
+    try {
+      // Validación adicional: el usuario solo puede cambiar su propia contraseña
+      const result = await this.authService.changePassword(user.userId, changePasswordDto);
+      return result;
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'Failed to change password',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Get('check-first-time/:email')
+  @ApiOperation({ 
+    summary: 'Verificar si un usuario necesita cambiar contraseña en primer login',
+    description: 'Endpoint público para verificar el estado de primer login de un usuario'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estado de primer login del usuario',
+    schema: {
+      type: 'object',
+      properties: {
+        isFirstTimeLogin: { type: 'boolean', example: true },
+        user: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', example: 'uuid-string' },
+            email: { type: 'string', example: 'user@institution.com' },
+            full_name: { type: 'string', example: 'Usuario Institucional' },
+            role: { type: 'string', example: 'owner' },
+            status: { type: 'string', example: 'verified' },
+            first_time_login: { type: 'boolean', example: true },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  async checkFirstTimeLogin(@Param('email') email: string) {
+    try {
+      const result = await this.authService.checkFirstTimeLoginStatus(email);
+      return result;
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'User not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
   }
 }

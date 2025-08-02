@@ -6,6 +6,9 @@ import { Pool, PoolClient } from 'pg';
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DatabaseService.name);
   private pool: Pool | null = null;
+  
+  private mockUsers: any[] = [];
+  private mockInstitutions: any[] = [];
 
   constructor(private configService: ConfigService) {}
 
@@ -25,7 +28,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      // Test the connection
       const client = await this.pool.connect();
       await client.query('SELECT NOW()');
       client.release();
@@ -46,7 +48,30 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
   async query(text: string, params?: any[]): Promise<any> {
     if (!this.pool) {
-      this.logger.warn('Database not connected. Returning mock data.');
+      this.logger.warn('Database not connected. Using mock storage.');
+      
+      if (text.includes('SELECT * FROM users WHERE email = $1')) {
+        const email = params?.[0];
+        const user = this.mockUsers.find(u => u.email === email);
+        return { rows: user ? [user] : [], rowCount: user ? 1 : 0 };
+      }
+      
+      if (text.includes('UPDATE users') && text.includes('WHERE id = $')) {
+        const userId = params?.[params.length - 1]; // Last parameter is usually the ID
+        const userIndex = this.mockUsers.findIndex(u => u.id === userId);
+        if (userIndex >= 0) {
+          if (text.includes('encrypted_password')) {
+            this.mockUsers[userIndex].encrypted_password = params?.[0];
+          }
+          if (text.includes('first_time_login')) {
+            this.mockUsers[userIndex].first_time_login = false;
+          }
+          this.mockUsers[userIndex].updated_at = new Date().toISOString();
+          return { rows: [this.mockUsers[userIndex]], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      }
+      
       return { rows: [], rowCount: 0 };
     }
 
@@ -66,7 +91,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.pool.connect();
   }
 
-  // Transaction methods
   async executeTransaction<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
     if (!this.pool) {
       throw new Error('Database not connected');
@@ -88,16 +112,24 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Users methods
   async findUserByEmail(email: string) {
     if (!this.pool) {
-      this.logger.warn('Database not connected. Returning mock user.');
+      this.logger.warn('Database not connected. Using mock storage.');
+      
+      const mockUser = this.mockUsers.find(u => u.email === email);
+      if (mockUser) {
+        return mockUser;
+      }
+      
       if (email === 'admin@tessera.com') {
         return {
           id: 'mock-admin-id',
           email: 'admin@tessera.com',
           full_name: 'Mock Admin',
           role: 'admin',
+          status: 'verified',
+          encrypted_password: null,
+          first_time_login: false,
           created_at: new Date().toISOString(),
         };
       }
@@ -170,7 +202,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Companies methods
   async findCompanyById(id: string) {
     if (!this.pool) {
       return null;
@@ -188,7 +219,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Institutions methods
   async findInstitutionById(id: string) {
     if (!this.pool) {
       return null;
@@ -220,7 +250,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       return {
         id: `mock-inst-${Date.now()}`,
         ...institutionData,
-        status: 'pendiente',
+        status: 'pending',
         created_at: new Date().toISOString(),
       };
     }
@@ -247,7 +277,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Test connection method
   async testConnection() {
     if (!this.pool) {
       return { connected: false, message: 'Database pool not initialized' };
@@ -268,25 +297,59 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  // Transaction methods for complex operations
   async createCompanyWithOwner(companyData: {
-    // Institution data (renamed from company)
     name: string;
     legal_id: string;
     email_institucional: string;
     website?: string;
     description?: string;
     logo_url?: string;
-    // Owner data
     owner_email: string;
     owner_full_name: string;
     owner_password_hash: string;
+    temporary_password: string;
   }) {
+    if (!this.pool) {
+      this.logger.warn('Database not connected. Using mock storage.');
+      const mockInstitution = {
+        id: `mock-inst-${Date.now()}`,
+        name: companyData.name,
+        legal_id: companyData.legal_id,
+        email_institucional: companyData.email_institucional,
+        website: companyData.website,
+        description: companyData.description,
+        logo_url: companyData.logo_url,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      };
+      
+      const mockUser = {
+        id: `mock-user-${Date.now()}`,
+        email: companyData.owner_email,
+        full_name: companyData.owner_full_name,
+        encrypted_password: companyData.owner_password_hash,
+        temporary_password: companyData.temporary_password,
+        role: 'owner',
+        institution_id: mockInstitution.id,
+        status: 'pending',
+        first_time_login: true,
+        created_at: new Date().toISOString(),
+      };
+
+      this.mockInstitutions.push(mockInstitution);
+      this.mockUsers.push(mockUser);
+
+      return {
+        user: mockUser,
+        institution: mockInstitution,
+        message: 'Institution and owner created successfully (MOCK MODE)'
+      };
+    }
+
     return this.executeTransaction(async (client) => {
-      // 1. Create the institution first
       const institutionResult = await client.query(
-        `INSERT INTO institutions (name, legal_id, email_institucional, website, description, logo_url) 
-         VALUES ($1, $2, $3, $4, $5, $6) 
+        `INSERT INTO institutions (name, legal_id, email_institucional, website, description, logo_url, status) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) 
          RETURNING *`,
         [
           companyData.name,
@@ -294,24 +357,26 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           companyData.email_institucional,
           companyData.website,
           companyData.description,
-          companyData.logo_url
+          companyData.logo_url,
+          'pending'
         ]
       );
       
       const createdInstitution = institutionResult.rows[0];
 
-      // 2. Create the owner user with reference to the institution
       const userResult = await client.query(
-        `INSERT INTO users (email, full_name, encrypted_password, role, institution_id, status) 
-         VALUES ($1, $2, $3, $4, $5, $6) 
+        `INSERT INTO users (email, full_name, encrypted_password, temporary_password, role, institution_id, status, first_time_login) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
          RETURNING *`,
         [
           companyData.owner_email,
           companyData.owner_full_name,
           companyData.owner_password_hash,
+          companyData.temporary_password,
           'owner',
           createdInstitution.id,
-          'pending'
+          'pending',
+          true
         ]
       );
 

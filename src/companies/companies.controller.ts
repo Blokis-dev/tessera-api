@@ -14,17 +14,18 @@ export class CompaniesController {
   @Post('create-with-owner')
   @ApiOperation({ 
     summary: 'Create institution with owner (ONLY way to create users)',
-    description: 'Creates a new institution and its owner user in a single atomic transaction. This is the ONLY endpoint to create new users in the system.' 
+    description: 'Creates a new institution and its owner user in a single atomic transaction. This is the ONLY endpoint to create new users in the system. A temporary password is automatically generated for the owner.' 
   })
   @ApiResponse({ 
     status: 201, 
-    description: 'Institution and owner created successfully',
+    description: 'Institution and owner created successfully with auto-generated temporary password',
     example: {
       user: {
         id: 'uuid',
         email: 'owner@institution.com',
         full_name: 'John Doe',
-        role: 'admin'
+        role: 'owner',
+        first_time_login: true
       },
       institution: {
         id: 'uuid',
@@ -32,7 +33,9 @@ export class CompaniesController {
         legal_id: '12345678',
         email_institucional: 'contact@institution.edu'
       },
-      message: 'Institution and owner created successfully'
+      temporary_password: 'Casa-Luna-123',
+      message: 'Institution and owner created successfully. Temporary password: Casa-Luna-123',
+      important_notice: 'The user must change this password on first login. Please communicate this password securely to the user.'
     }
   })
   @ApiResponse({ status: 400, description: 'Invalid input data' })

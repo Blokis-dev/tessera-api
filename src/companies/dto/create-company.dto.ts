@@ -63,13 +63,4 @@ export class CreateCompanyWithOwnerDto {
   })
   @IsString()
   owner_full_name: string;
-
-  @ApiProperty({ 
-    description: 'Owner password (minimum 6 characters)',
-    example: 'securepassword123',
-    minLength: 6 
-  })
-  @IsString()
-  @MinLength(6)
-  owner_password: string;
 }

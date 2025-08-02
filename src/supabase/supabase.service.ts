@@ -13,7 +13,7 @@ export class SupabaseService {
 
     if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('your_supabase') || supabaseKey.includes('your_supabase')) {
       this.logger.warn('Supabase credentials not configured. Using mock mode for testing.');
-      this.supabase = null as any; // Mock mode
+      this.supabase = null as any;
       return;
     }
 
@@ -22,7 +22,7 @@ export class SupabaseService {
       this.logger.log('Supabase client initialized successfully');
     } catch (error) {
       this.logger.error('Failed to initialize Supabase client:', error.message);
-      this.supabase = null as any; // Mock mode
+      this.supabase = null as any;
     }
   }
 
@@ -30,7 +30,6 @@ export class SupabaseService {
     return this.supabase;
   }
 
-  // Users methods
   async findUserByEmail(email: string) {
     if (!this.supabase) {
       this.logger.warn('Supabase not configured. Returning mock user for testing.');
@@ -89,7 +88,6 @@ export class SupabaseService {
     return data;
   }
 
-  // Institutions methods
   async findInstitutionById(id: string) {
     const { data, error } = await this.supabase
       .from('institutions')
@@ -149,7 +147,6 @@ export class SupabaseService {
     return data;
   }
 
-  // Certificates methods
   async createCertificate(certificateData: {
     title: string;
     description?: string;

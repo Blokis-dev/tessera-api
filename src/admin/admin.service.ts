@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { EmailService } from '../email/email.service';
 import { PendingInstitutionDto, PendingUserDto } from './dto/admin.dto';
 
 @Injectable()
 export class AdminService {
-  constructor(private databaseService: DatabaseService) {}
+  constructor(
+    private databaseService: DatabaseService,
+    private emailService: EmailService,
+  ) {}
 
   async getPendingInstitutions(): Promise<PendingInstitutionDto[]> {
     const query = `
@@ -93,27 +97,73 @@ export class AdminService {
     try {
       const transaction = async (client) => {
         // Check if user exists and is pending
-        const checkQuery = 'SELECT id, status FROM users WHERE id = $1';
+        const checkQuery = `
+          SELECT u.id, u.status, u.email, u.full_name, u.institution_id, u.temporary_password,
+                 i.name as institution_name
+          FROM users u
+          LEFT JOIN institutions i ON u.institution_id = i.id
+          WHERE u.id = $1
+        `;
         const checkResult = await client.query(checkQuery, [userId]);
         
         if (checkResult.rows.length === 0) {
           throw new NotFoundException('User not found');
         }
 
-        if (checkResult.rows[0].status !== 'pending') {
+        const userData = checkResult.rows[0];
+        
+        if (userData.status !== 'pending') {
           throw new BadRequestException('User is not in pending status');
         }
 
-        // Update user status
-        const updateQuery = `
-          UPDATE users 
-          SET status = $1, admin_notes = $2, updated_at = NOW()
-          WHERE id = $3
-          RETURNING id, full_name, email, role, status, institution_id
-        `;
-        
-        const result = await client.query(updateQuery, [status, adminNotes, userId]);
-        return result.rows[0];
+        if (status === 'verified' && userData.temporary_password) {
+          console.log('🔥 DEBUG: Enviando email de aprobación', {
+            userEmail: userData.email,
+            hasTemporaryPassword: !!userData.temporary_password,
+            temporaryPasswordLength: userData.temporary_password?.length
+          });
+          
+          await this.emailService.sendUserApprovalEmail({
+            userEmail: userData.email,
+            fullName: userData.full_name,
+            institutionName: userData.institution_name || 'Tu institución',
+            temporaryPassword: userData.temporary_password,
+            loginUrl: 'http://localhost:3001/login'
+          });
+          
+          console.log('🔥 DEBUG: Email enviado exitosamente');
+          
+          const updateQuery = `
+            UPDATE users 
+            SET status = $1, admin_notes = $2, updated_at = NOW()
+            WHERE id = $3
+            RETURNING id, full_name, email, role, status, institution_id
+          `;
+          
+          const result = await client.query(updateQuery, [status, adminNotes, userId]);
+          return result.rows[0];
+        }
+
+        if (status === 'rejected') {
+          await this.emailService.sendUserRejectionEmail({
+            userEmail: userData.email,
+            fullName: userData.full_name,
+            institutionName: userData.institution_name || 'Tu institución',
+            rejectionReason: adminNotes || 'No se proporcionó un motivo específico',
+            adminNotes: adminNotes
+          });
+
+          await this.deleteUserWithAssociatedData(client, userId, userData);
+          
+          return {
+            message: 'Usuario rechazado, email enviado y datos eliminados correctamente',
+            deletedUser: {
+              email: userData.email,
+              fullName: userData.full_name,
+              institutionName: userData.institution_name
+            }
+          };
+        }
       };
 
       return await this.databaseService.executeTransaction(transaction);
@@ -123,10 +173,86 @@ export class AdminService {
     }
   }
 
+  private async deleteUserWithAssociatedData(client: any, userId: string, userData: any) {
+    if (userData.role === 'owner' && userData.institution_id) {
+      const otherUsersQuery = `
+        SELECT COUNT(*) as count 
+        FROM users 
+        WHERE institution_id = $1 AND id != $2
+      `;
+      const otherUsersResult = await client.query(otherUsersQuery, [userData.institution_id, userId]);
+      
+      if (otherUsersResult.rows[0].count == 0) {
+        await client.query('DELETE FROM institutions WHERE id = $1', [userData.institution_id]);
+      }
+    }
+
+    await client.query('DELETE FROM users WHERE id = $1', [userId]);
+  }
+
+  async deleteUserWithCompany(userId: string) {
+    try {
+      const transaction = async (client) => {
+        const userQuery = `
+          SELECT u.id, u.email, u.full_name, u.role, u.institution_id,
+                 i.name as institution_name
+          FROM users u
+          LEFT JOIN institutions i ON u.institution_id = i.id
+          WHERE u.id = $1
+        `;
+        const userResult = await client.query(userQuery, [userId]);
+        
+        if (userResult.rows.length === 0) {
+          throw new NotFoundException('Usuario no encontrado');
+        }
+
+        const userData = userResult.rows[0];
+        let deletedInstitution = null;
+
+        if (userData.institution_id) {
+          if (userData.role === 'owner') {
+            const deleteUsersQuery = 'DELETE FROM users WHERE institution_id = $1 RETURNING email, full_name';
+            const deletedUsersResult = await client.query(deleteUsersQuery, [userData.institution_id]);
+            
+            const deleteInstitutionQuery = 'DELETE FROM institutions WHERE id = $1 RETURNING name';
+            const deletedInstitutionResult = await client.query(deleteInstitutionQuery, [userData.institution_id]);
+            
+            deletedInstitution = deletedInstitutionResult.rows[0];
+            
+            return {
+              message: 'Usuario owner eliminado junto con su institución y todos los usuarios asociados',
+              deletedUser: userData,
+              deletedInstitution: deletedInstitution,
+              deletedUsers: deletedUsersResult.rows
+            };
+          } else {
+            await client.query('DELETE FROM users WHERE id = $1', [userId]);
+            
+            return {
+              message: 'Usuario eliminado (institución conservada)',
+              deletedUser: userData
+            };
+          }
+        } else {
+          await client.query('DELETE FROM users WHERE id = $1', [userId]);
+          
+          return {
+            message: 'Usuario eliminado (sin institución asociada)',
+            deletedUser: userData
+          };
+        }
+      };
+
+      return await this.databaseService.executeTransaction(transaction);
+    } catch (error) {
+      console.error('Error in deleteUserWithCompany:', error);
+      throw error;
+    }
+  }
+
   async approveInstitutionWithOwner(institutionId: string) {
     try {
       const transaction = async (client) => {
-        // Check if institution exists and is pending
         const institutionQuery = 'SELECT id, status FROM institutions WHERE id = $1';
         const institutionResult = await client.query(institutionQuery, [institutionId]);
         
@@ -138,7 +264,6 @@ export class AdminService {
           throw new BadRequestException('Institution is not in pending status');
         }
 
-        // Find the owner user for this institution
         const ownerQuery = `
           SELECT id, status FROM users 
           WHERE institution_id = $1 AND role = 'owner'
@@ -151,7 +276,6 @@ export class AdminService {
 
         const ownerId = ownerResult.rows[0].id;
 
-        // Update institution status to verified
         const updateInstitutionQuery = `
           UPDATE institutions 
           SET status = 'verified', updated_at = NOW()
@@ -161,7 +285,6 @@ export class AdminService {
         
         const institutionUpdateResult = await client.query(updateInstitutionQuery, [institutionId]);
 
-        // Update owner user status to verified
         const updateUserQuery = `
           UPDATE users 
           SET status = 'verified', updated_at = NOW()

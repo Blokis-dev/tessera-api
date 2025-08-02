@@ -24,7 +24,6 @@ export class SeedService {
     const createdUsers: any[] = [];
     for (const user of users) {
       try {
-        // Verificar si el usuario ya existe
         const existingUser = await this.databaseService.findUserByEmail(user.email);
         if (existingUser) {
           this.logger.log(`User ${user.email} already exists, skipping...`);
@@ -48,7 +47,6 @@ export class SeedService {
   }
 
   async seedInstitutions() {
-    // Primero asegurémonos de que existe un usuario de tipo institución
     const institutionUser = await this.databaseService.findUserByEmail('institucion@universidad.edu');
     if (!institutionUser) {
       throw new Error('Institution user not found. Please seed users first.');

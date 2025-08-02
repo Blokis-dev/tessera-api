@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Get, Param, UseGuards, Patch } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards, Patch, Delete } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtCookieAuthGuard } from '../auth/guards/jwt-cookie-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -63,5 +63,31 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Institution and owner approved' })
   async approveInstitutionWithOwner(@Param('id') institutionId: string) {
     return await this.adminService.approveInstitutionWithOwner(institutionId);
+  }
+
+  @Delete('users/:id/with-company')
+  @ApiOperation({ 
+    summary: 'Delete user and associated company/institution (Development/Admin)',
+    description: 'Deletes a user and their associated company. If user is owner, deletes the entire institution and all associated users. Use with caution!'
+  })
+  @ApiResponse({ status: 200, description: 'User and associated data deleted' })
+  async deleteUserWithCompany(@Param('id') userId: string) {
+    return await this.adminService.deleteUserWithCompany(userId);
+  }
+
+  @Get('config/urls')
+  @ApiOperation({ 
+    summary: 'Get current frontend URLs configuration (Admin only)',
+    description: 'Returns the currently configured frontend URLs for login, password reset, etc.'
+  })
+  @ApiResponse({ status: 200, description: 'Frontend URLs configuration' })
+  async getFrontendUrls() {
+    // This could be expanded to read from database or config service
+    return {
+      loginUrl: process.env.LOGIN_URL || 'http://localhost:3001/login',
+      frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3001',
+      companyName: process.env.COMPANY_NAME || 'Tessera',
+      fromEmail: process.env.FROM_EMAIL || 'no-reply@tessera.com'
+    };
   }
 }

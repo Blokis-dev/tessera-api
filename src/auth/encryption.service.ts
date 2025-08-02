@@ -3,7 +3,6 @@ import * as crypto from 'crypto';
 
 @Injectable()
 export class EncryptionService {
-  
 
   encryptWithUserSecret(payload: string, userPassword: string): string {
     try {
@@ -48,7 +47,6 @@ export class EncryptionService {
       throw new Error('Decryption failed');
     }
   }
-
 
   generateSessionToken(userId: string, email: string, timestamp: number): string {
     const data = `${userId}:${email}:${timestamp}`;

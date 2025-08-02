@@ -8,6 +8,7 @@ import { UsersModule } from './users/users.module';
 import { SeedModule } from './seed/seed.module';
 import { CompaniesModule } from './companies/companies.module';
 import { AdminModule } from './admin/admin.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AdminModule } from './admin/admin.module';
     SeedModule,
     CompaniesModule,
     AdminModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
