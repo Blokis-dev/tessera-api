@@ -1078,4 +1078,5 @@ Las contraseñas deben cumplir:
 5. **Las fechas están en formato ISO 8601**
 6. **Los UUIDs son strings** - no convertir a otros tipos
 
+## **Uso de IA**
 Se uso copilot para troubleshooting y documentacion de codigo, V0 para creacion de componentes y chatgpt para lluvia de ideas
