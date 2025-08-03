@@ -9,6 +9,10 @@ import { SeedModule } from './seed/seed.module';
 import { CompaniesModule } from './companies/companies.module';
 import { AdminModule } from './admin/admin.module';
 import { EmailModule } from './email/email.module';
+import { SupabaseModule } from './supabase/supabase.module';
+import { IpfsModule } from './ipfs/ipfs.module';
+import { QrModule } from './qr/qr.module';
+import { CertificatesModule } from './certificates/certificates.module';
 
 @Module({
   imports: [
@@ -16,6 +20,10 @@ import { EmailModule } from './email/email.module';
       isGlobal: true,
     }),
     DatabaseModule,
+    SupabaseModule,
+    IpfsModule,
+    QrModule,
+    CertificatesModule,
     AuthModule,
     UsersModule,
     SeedModule,

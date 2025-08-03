@@ -1,0 +1,12 @@
+import { Injectable } from '@nestjs/common';
+
+export interface TestData {
+  test: string;
+}
+
+@Injectable()
+export class TestService {
+  test(): string {
+    return 'working';
+  }
+}
