@@ -55,4 +55,25 @@ export class CompaniesService {
   async getAllCompanies() {
     return await this.databaseService.query('SELECT * FROM institutions ORDER BY created_at DESC');
   }
+
+  async getAllInstitutions() {
+    const query = `
+      SELECT 
+        id,
+        name,
+        legal_id,
+        email_institucional,
+        website,
+        description,
+        logo_url,
+        status,
+        created_at
+      FROM institutions 
+      WHERE status = 'approved'
+      ORDER BY name ASC
+    `;
+    
+    const result = await this.databaseService.query(query);
+    return result.rows;
+  }
 }
