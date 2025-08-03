@@ -1,6 +1,6 @@
 # 🚀 TESSERA API - Documentación Completa de Endpoints
 
-Esta documentación está diseñada como un **prompt completo** para que el frontend pueda consumir cada endpoint de manera precisa. Cada ruta incluye todos los detalles necesarios: métodos HTTP, rutas exactas, parámetros, cuerpos de petición, respuestas y códigos de estado.
+Esta documentación está diseñada para que el frontend pueda consumir cada endpoint de manera precisa. Cada ruta incluye todos los detalles necesarios: métodos HTTP, rutas exactas, parámetros, cuerpos de petición, respuestas y códigos de estado.
 
 ## 📋 Información General
 
@@ -8,6 +8,218 @@ Esta documentación está diseñada como un **prompt completo** para que el fron
 - **Autenticación**: JWT almacenado en cookies HttpOnly
 - **Content-Type**: `application/json`
 - **CORS**: Habilitado para `http://localhost:3001`
+
+---
+
+## ⚙️ **INSTALACIÓN Y CONFIGURACIÓN**
+
+### 🔧 **Requisitos Previos**
+- **Node.js**: v18 o superior
+- **npm**: v8 o superior
+- **PostgreSQL**: Base de datos (recomendado Supabase)
+- **Git**: Para clonar el repositorio
+
+### 📥 **Instalación**
+
+1. **Clonar el repositorio**:
+```bash
+git clone https://github.com/Blokis-dev/tessera-api.git
+cd tessera-api
+```
+
+2. **Instalar dependencias**:
+```bash
+npm install
+```
+
+3. **Configurar variables de entorno**:
+```bash
+# Copiar el archivo de ejemplo
+cp .env.example .env
+
+# Editar el archivo .env con tus configuraciones
+nano .env
+```
+
+### 🌍 **Variables de Entorno Requeridas**
+
+Crear un archivo `.env` en la raíz del proyecto con las siguientes variables:
+
+```env
+# ===================================
+# DATABASE CONFIGURATION
+# ===================================
+# Supabase PostgreSQL Database URL
+DATABASE_URL=postgresql://postgres.tu_proyecto:tu_password@aws-0-sa-east-1.pooler.supabase.com:5432/postgres
+SUPABASE_URL=https://tu_proyecto.supabase.co
+SUPABASE_ANON_KEY=tu_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=tu_supabase_service_role_key
+
+# ===================================
+# EMAIL CONFIGURATION (BREVO)
+# ===================================
+# Para envío de emails automáticos (registro, aprobaciones, etc.)
+BREVO_API_KEY=xkeysib-tu_brevo_api_key
+FROM_EMAIL=tu_email@domain.com
+COMPANY_NAME=Tessera
+
+# ===================================
+# APPLICATION URLS
+# ===================================
+# URLs del frontend para redirecciones y CORS
+FRONTEND_URL=http://localhost:3001
+LOGIN_URL=http://localhost:3001/auth/first-time-login
+
+# ===================================
+# JWT SECURITY
+# ===================================
+# Clave secreta para firmar tokens JWT (usar una clave fuerte en producción)
+JWT_SECRET=tu_super_secreto_jwt_key_muy_seguro_aqui
+
+# ===================================
+# SERVER CONFIGURATION
+# ===================================
+# Puerto donde correrá la API
+PORT=3000
+
+# ===================================
+# CORS CONFIGURATION
+# ===================================
+# URLs permitidas para CORS (separadas por comas)
+CORS_ORIGIN=http://localhost:3001,http://localhost:3000
+CORS_CREDENTIALS=true
+
+# ===================================
+# PINATA IPFS CONFIGURATION
+# ===================================
+# Para almacenar certificados en IPFS (blockchain)
+PINATA_JWT=tu_pinata_jwt_token
+PINATA_GATEWAY_URL=tu_gateway.mypinata.cloud
+PINATA_API_KEY=tu_pinata_api_key
+PINATA_SECRET_KEY=tu_pinata_secret_key
+
+```
+
+### 🚀 **Ejecutar el Proyecto**
+
+#### **Desarrollo**:
+```bash
+# Modo desarrollo con hot reload
+npm run start:dev
+
+# O con watch mode
+npm run dev
+```
+
+#### **Producción**:
+```bash
+# Compilar el proyecto
+npm run build
+
+# Ejecutar en producción
+npm run start:prod
+```
+
+#### **Verificar que está funcionando**:
+```bash
+# La API debería estar disponible en:
+# http://localhost:3000
+
+# Verificar health check:
+curl http://localhost:3000/api/health
+
+# Ver documentación Swagger:
+# http://localhost:3000/api
+```
+
+### 🗄️ **Configuración de Base de Datos**
+
+#### **Opción 1: Supabase (Recomendado)**
+1. Crear cuenta en [Supabase](https://supabase.com)
+2. Crear nuevo proyecto
+3. Copiar las credenciales al archivo `.env`
+4. Las tablas se crean automáticamente al ejecutar la aplicación
+
+#### **Opción 2: PostgreSQL Local**
+```bash
+# Instalar PostgreSQL
+# Crear base de datos
+createdb tessera_db
+
+# Actualizar DATABASE_URL en .env:
+DATABASE_URL=postgresql://usuario:password@localhost:5432/tessera_db
+```
+
+### 📧 **Configuración de Email (Brevo)**
+
+1. Crear cuenta en [Brevo](https://www.brevo.com/)
+2. Generar API Key en configuración
+3. Agregar la API Key al archivo `.env`
+4. Verificar el email remitente en Brevo
+
+### 🔗 **Configuración de IPFS (Pinata)**
+
+1. Crear cuenta en [Pinata](https://pinata.cloud/)
+2. Generar API Keys
+3. Agregar las credenciales al archivo `.env`
+
+### 🧪 **Scripts Disponibles**
+
+```bash
+# Desarrollo
+npm run start:dev         # Inicia en modo desarrollo
+npm run dev              # Alias para start:dev
+
+# Producción
+npm run build            # Compila el proyecto
+npm run start:prod       # Ejecuta la versión compilada
+
+# Testing
+npm run test             # Ejecuta tests unitarios
+npm run test:e2e         # Ejecuta tests end-to-end
+npm run test:cov         # Tests con coverage
+
+# Linting y formato
+npm run lint             # Revisa el código
+npm run format          # Formatea el código
+
+# Base de datos
+npm run seed            # Crea datos de prueba (desarrollo)
+```
+
+### 🔒 **Configuración de Seguridad**
+
+#### **Para Desarrollo**:
+- JWT_SECRET puede ser cualquier string largo
+- CORS permite localhost
+- Cookies no requieren HTTPS
+
+#### **Para Producción**:
+- Usar JWT_SECRET criptográficamente seguro
+- Configurar CORS solo para dominios específicos
+- Habilitar HTTPS
+- Usar variables de entorno seguras
+
+### 🚨 **Solución de Problemas Comunes**
+
+#### **Error de conexión a base de datos**:
+```bash
+# Verificar que DATABASE_URL es correcta
+# Verificar que Supabase permite conexiones externas
+# Verificar firewall/red
+```
+
+#### **Error de CORS**:
+```bash
+# Verificar CORS_ORIGIN en .env
+# Asegurar que el frontend usa credentials: 'include'
+```
+
+#### **Error de cookies**:
+```bash
+# Verificar que el frontend y backend están en el mismo dominio/localhost
+# Verificar configuración de CORS_CREDENTIALS=true
+```
 
 ---
 
@@ -95,17 +307,15 @@ GET /api/auth/verify
 **Response Success (200)**:
 ```json
 {
-  "user": {
-    "id": "uuid-string",
-    "email": "user@example.com",
-    "full_name": "Usuario Ejemplo",
-    "role": "owner",
-    "institution_id": "uuid-string",
-    "institution_name": "Mi Institución",
-    "status": "verified",
-    "first_time_login": false
-  },
-  "valid": true
+  "userId": "uuid-string",
+  "email": "user@example.com",
+  "full_name": "Usuario Ejemplo",
+  "role": "owner",
+  "institution_id": "uuid-string",
+  "institution_name": "Mi Institución",
+  "status": "verified",
+  "verified": true,
+  "message": "Token from cookie is valid"
 }
 ```
 
@@ -119,7 +329,64 @@ GET /api/auth/verify
 
 ---
 
-### 4. 🔄 **PRIMER LOGIN** (Cambio de Contraseña Temporal)
+### 4. 👤 **INFORMACIÓN COMPLETA DEL USUARIO**
+```http
+GET /api/auth/myinfo
+```
+
+**Descripción**: Obtener información completa del usuario autenticado, incluyendo todos los datos personales y de la institución.
+
+**Headers**: Requiere cookies de autenticación.
+
+**Response Success (200)**:
+```json
+{
+  "id": "uuid-string",
+  "email": "user@example.com",
+  "full_name": "Usuario Ejemplo",
+  "role": "owner",
+  "status": "verified",
+  "first_time_login": false,
+  "created_at": "2025-01-01T00:00:00.000Z",
+  "updated_at": "2025-01-01T00:00:00.000Z",
+  "institution": {
+    "id": "uuid-string",
+    "name": "Mi Institución",
+    "legal_id": "12345678901",
+    "email": "contacto@institucion.edu",
+    "website": "https://institucion.edu",
+    "description": "Universidad líder en educación superior",
+    "logo_url": "https://institucion.edu/logo.png",
+    "status": "approved"
+  },
+  "permissions": [
+    "read:institution",
+    "write:institution",
+    "create:certificates",
+    "manage:users"
+  ]
+}
+```
+
+**Response Error (401)**:
+```json
+{
+  "statusCode": 401,
+  "message": "Unauthorized"
+}
+```
+
+**Response Error (404)**:
+```json
+{
+  "statusCode": 404,
+  "message": "User not found"
+}
+```
+
+---
+
+### 5. 🔄 **PRIMER LOGIN** (Cambio de Contraseña Temporal)
 ```http
 POST /api/auth/first-time-login
 ```
@@ -163,7 +430,7 @@ POST /api/auth/first-time-login
 
 ---
 
-### 5. 🔒 **CAMBIAR CONTRASEÑA**
+### 6. 🔒 **CAMBIAR CONTRASEÑA**
 ```http
 PATCH /api/auth/change-password
 ```
@@ -196,7 +463,7 @@ PATCH /api/auth/change-password
 
 ---
 
-### 6. 🔍 **VERIFICAR ESTADO PRIMER LOGIN**
+### 7. 🔍 **VERIFICAR ESTADO PRIMER LOGIN**
 ```http
 GET /api/auth/check-first-time/:email
 ```
@@ -811,4 +1078,4 @@ Las contraseñas deben cumplir:
 5. **Las fechas están en formato ISO 8601**
 6. **Los UUIDs son strings** - no convertir a otros tipos
 
-Esta documentación está diseñada para ser tu **prompt completo** para implementar cada endpoint en el frontend. Cada ruta tiene toda la información necesaria para su implementación correcta.
+Se uso copilot para troubleshooting y documentacion de codigo, V0 para creacion de componentes y chatgpt para lluvia de ideas
