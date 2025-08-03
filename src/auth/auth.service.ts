@@ -359,4 +359,59 @@ export class AuthService {
       },
     };
   }
+
+  async getUserCompleteInfo(userId: string): Promise<any> {
+    const userQuery = `
+      SELECT 
+        u.*,
+        i.name as institution_name,
+        i.legal_id as institution_legal_id,
+        i.email_institucional as institution_email,
+        i.website as institution_website,
+        i.description as institution_description,
+        i.logo_url as institution_logo_url,
+        i.status as institution_status
+      FROM users u
+      LEFT JOIN institutions i ON u.institution_id = i.id
+      WHERE u.id = $1
+    `;
+    
+    const result = await this.databaseService.query(userQuery, [userId]);
+    
+    if (result.rows.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const user = result.rows[0];
+
+    // Construir respuesta completa
+    const completeUserInfo = {
+      // Información del usuario
+      id: user.id,
+      email: user.email,
+      full_name: user.full_name,
+      role: user.role,
+      status: user.status,
+      first_time_login: user.first_time_login,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      
+      // Información de la institución (si existe)
+      institution: user.institution_id ? {
+        id: user.institution_id,
+        name: user.institution_name,
+        legal_id: user.institution_legal_id,
+        email: user.institution_email,
+        website: user.institution_website,
+        description: user.institution_description,
+        logo_url: user.institution_logo_url,
+        status: user.institution_status,
+      } : null,
+
+      // Permisos basados en el rol
+      permissions: this.getUserPermissions(user.role),
+    };
+
+    return completeUserInfo;
+  }
 }

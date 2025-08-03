@@ -185,6 +185,68 @@ export class AuthController {
     };
   }
 
+  @Get('myinfo')
+  @UseGuards(JwtCookieAuthGuard)
+  @ApiOperation({ 
+    summary: 'Obtener información completa del usuario autenticado',
+    description: 'Devuelve toda la información disponible del usuario usando el JWT cookie, incluyendo datos de la institución'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Información completa del usuario',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', example: 'uuid-string' },
+        email: { type: 'string', example: 'admin@tessera.com' },
+        full_name: { type: 'string', example: 'Administrador del Sistema' },
+        role: { type: 'string', example: 'admin' },
+        status: { type: 'string', example: 'verified' },
+        first_time_login: { type: 'boolean', example: false },
+        created_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' },
+        updated_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' },
+        institution: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            id: { type: 'string', example: 'uuid-string' },
+            name: { type: 'string', example: 'Universidad Nacional' },
+            legal_id: { type: 'string', example: '12345678901' },
+            email: { type: 'string', example: 'info@universidad.edu' },
+            website: { type: 'string', example: 'https://universidad.edu' },
+            description: { type: 'string', example: 'Universidad pública nacional' },
+            logo_url: { type: 'string', example: 'https://universidad.edu/logo.png' },
+            status: { type: 'string', example: 'approved' },
+          },
+        },
+        permissions: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['read:all', 'write:all', 'delete:all'],
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Cookie no encontrada o token inválido',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Usuario no encontrado en la base de datos',
+  })
+  async getMyInfo(@GetUser() user: any) {
+    try {
+      const completeUserInfo = await this.authService.getUserCompleteInfo(user.userId);
+      return completeUserInfo;
+    } catch (error) {
+      throw new HttpException(
+        error.message || 'User not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+  }
+
   @Post('first-time-login')
   @ApiOperation({ 
     summary: 'Cambiar contraseña en el primer login (One-time use)',
