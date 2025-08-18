@@ -37,7 +37,7 @@ export class CertificatesController {
   // @Roles('admin', 'owner') // Temporalmente comentado para testing
   @UseInterceptors(FileInterceptor('image'))
   @ApiOperation({ 
-    summary: '🚀 Crear certificado completo automáticamente',
+    summary: 'Crear certificado completo automáticamente',
     description: 'Crea un certificado completo en un solo paso: básico → Pinata → Avalanche → QR.'
   })
   @ApiConsumes('multipart/form-data')
@@ -85,7 +85,7 @@ export class CertificatesController {
     // @GetUser() user?: any, // Temporalmente comentado para testing
   ) {
     const user = { email: 'test@example.com' }; // Usuario temporal para testing
-    this.logger.log(`🚀 Creating complete certificate for: ${createDto.recipient_name} (by user: ${user?.email})`);
+    this.logger.log(`Creating complete certificate for: ${createDto.recipient_name} (by user: ${user?.email})`);
 
     if (!file) {
       throw new HttpException(

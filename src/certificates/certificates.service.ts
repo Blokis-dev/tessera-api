@@ -23,6 +23,11 @@ export interface CertificateMetadata {
   blockchain: string;
   api_version: string;
   created_at: string;
+  image?: string;
+  external_url?: string;
+  name?: string;
+  description?: string;
+  attributes?: Array<{ trait_type: string; value: string }>;
 }
 
 export interface PinataUploadResponse {
@@ -124,9 +129,12 @@ export class CertificatesService {
         .select('name')
         .eq('id', certificate.institute_id)
         .single();
-
-      // Generar metadatos
-      const metadata = this.generateMetadata(certificate, institution?.name || 'Unknown Institution');
+  const gatewayUrlRaw = this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud';
+  const gatewayUrl = this.ensureHttpUrl(gatewayUrlRaw).replace(/\/+$/, '');
+  const publicGatewayRaw = this.configService.get('PUBLIC_IPFS_GATEWAY') || gatewayUrl;
+  const publicGatewayUrl = this.ensureHttpUrl(publicGatewayRaw).replace(/\/+$/, '');
+  const frontendRaw = this.configService.get('FRONTEND_URL') || '';
+  const frontendUrl = frontendRaw ? this.ensureHttpUrl(frontendRaw).replace(/\/+$/, '') : '';
 
       // 1. Subir imagen a Pinata usando PinataService
       this.logger.log(`🖼️ Uploading certificate image...`);
@@ -141,9 +149,19 @@ export class CertificatesService {
 
       this.logger.log(`✅ Image uploaded to Pinata: ${imageUpload.cid}`);
 
+      // Generar metadata incluyendo la URL de la imagen para compatibilidad con explorers
+  const imageUrl = `${gatewayUrl}/ipfs/${imageUpload.cid}`;
+  const imageUrlPublic = `${publicGatewayUrl}/ipfs/${imageUpload.cid}`;
+      const metadataObj = this.generateMetadata(certificate, institution?.name || 'Unknown Institution');
+  // Usar gateway público en el campo image del metadata para mayor compatibilidad
+  metadataObj.image = imageUrlPublic;
+      if (frontendUrl) {
+        metadataObj.external_url = `${frontendUrl}/certificate/${certificateId}`;
+      }
+
       // 2. Subir metadatos a Pinata usando PinataService
       this.logger.log(`📄 Uploading certificate metadata...`);
-      const metadataUpload = await this.pinataService.uploadJSON(metadata, {
+      const metadataUpload = await this.pinataService.uploadJSON(metadataObj, {
         name: `certificate-metadata-${certificateId}.json`,
         keyvalues: {
           certificate_id: certificateId,
@@ -154,12 +172,10 @@ export class CertificatesService {
 
       this.logger.log(`✅ Metadata uploaded to Pinata: ${metadataUpload.cid}`);
 
-      const gatewayUrl = this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud';
-
-      const response: PinataUploadResponse = {
+  const response: PinataUploadResponse = {
         image_hash: imageUpload.cid,
         metadata_hash: metadataUpload.cid,
-        image_url: `${gatewayUrl}/ipfs/${imageUpload.cid}`,
+        image_url: imageUrl,
         metadata_url: `${gatewayUrl}/ipfs/${metadataUpload.cid}`,
       };
 
@@ -226,6 +242,9 @@ export class CertificatesService {
         this.logger.log(`👤 Student not found in DB, using defaults for: ${certificate.recipient_name}`);
       }
 
+      const gatewayUrl = this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud';
+      const frontendUrl = this.configService.get('FRONTEND_URL') || '';
+
       // Preparar datos para Avalanche blockchain con formato exacto requerido
       const avalancheData = {
         student: studentData,
@@ -246,7 +265,11 @@ export class CertificatesService {
         },
         ipfs: {
           image_hash: certificate.image_hash, // Dinámico desde BD - Requerido
-          metadata_hash: certificate.metadata_hash // Dinámico desde BD - Requerido
+          metadata_hash: certificate.metadata_hash, // Dinámico desde BD - Requerido
+          image_url: `${gatewayUrl}/ipfs/${certificate.image_hash}`,
+          metadata_url: `${gatewayUrl}/ipfs/${certificate.metadata_hash}`,
+          token_uri: `${gatewayUrl}/ipfs/${certificate.metadata_hash}`,
+          front_end_url: frontendUrl ? `${frontendUrl}/certificate/${certificate.id}` : undefined,
         }
       };
 
@@ -258,6 +281,43 @@ export class CertificatesService {
       // Log del JSON que se va a enviar (para debugging)
       this.logger.log(`📤 JSON a enviar a Avalanche:`);
       this.logger.log(JSON.stringify(avalancheData, null, 2));
+
+      // VALIDACIÓN PRE-MINT: verificar que el metadata_url y la image_url sean accesibles
+      try {
+        const metadataUrl = `${gatewayUrl}/ipfs/${certificate.metadata_hash}`;
+        this.logger.log(`🔎 Validating metadata URL: ${metadataUrl}`);
+        const metaResp = await fetch(metadataUrl, { method: 'GET' });
+        if (!metaResp.ok) {
+          const text = await metaResp.text().catch(() => 'no body');
+          this.logger.error(`❌ Metadata URL not accessible: ${metaResp.status} - ${text}`);
+          throw new Error(`Metadata URL not accessible: ${metadataUrl}`);
+        }
+
+        const metaJson = await metaResp.json().catch(() => null);
+        if (!metaJson || !metaJson.image) {
+          this.logger.error(`❌ Metadata JSON missing 'image' field or invalid JSON: ${metadataUrl}`);
+          throw new Error('Metadata JSON missing required "image" field');
+        }
+
+        const imageUrl = metaJson.image.startsWith('http') ? metaJson.image : `${gatewayUrl}/ipfs/${metaJson.image}`;
+        this.logger.log(`🔎 Validating image URL: ${imageUrl}`);
+        const imgResp = await fetch(imageUrl, { method: 'GET' });
+        if (!imgResp.ok) {
+          this.logger.error(`❌ Image URL not accessible: ${imgResp.status}`);
+          throw new Error(`Image URL not accessible: ${imageUrl}`);
+        }
+
+        const contentType = imgResp.headers.get('content-type') || '';
+        if (!contentType.startsWith('image/')) {
+          this.logger.error(`❌ Image URL content-type is not image/*: ${contentType}`);
+          throw new Error(`Image URL does not return image content-type: ${contentType}`);
+        }
+
+        this.logger.log(`✅ Metadata and image validated successfully`);
+      } catch (validationError) {
+        this.logger.error(`❌ Pre-mint validation failed: ${validationError.message}`);
+        throw validationError;
+      }
 
       // Enviar a la API de Avalanche (sin Authorization por ahora)
       const response = await fetch('https://tessera-blockchain.blokislabs.com/api/certificates/mint', {
@@ -400,9 +460,9 @@ export class CertificatesService {
       const progress = {
         certificate_id: certificateId,
         recipient_name: createDto.recipient_name,
-        steps_completed: [] as string[],
         current_step: '',
         error: null,
+        completed_at: null,
       };
 
       try {
@@ -410,25 +470,50 @@ export class CertificatesService {
         this.logger.log(`📤 Step 2/4: Uploading to Pinata...`);
         progress.current_step = 'Uploading to Pinata';
         const pinataResult = await this.uploadToPinata(certificateId, imageBuffer);
-        progress.steps_completed.push('✅ Uploaded to Pinata');
-        
         // PASO 3: Enviar a Avalanche
         this.logger.log(`⛷️ Step 3/4: Sending to Avalanche...`);
         progress.current_step = 'Sending to Avalanche';
         const avalancheResult = await this.sendToAvalanche(certificateId);
-        progress.steps_completed.push('✅ Sent to Avalanche');
-        
         // PASO 4: Generar QR
         this.logger.log(`🔗 Step 4/4: Generating QR code...`);
         progress.current_step = 'Generating QR code';
-        const qrUrl = await this.generateQRCode(certificateId);
-        progress.steps_completed.push('✅ QR code generated');
+        // Generar el objeto de URLs para el QR
+        let blockchainAvalancheUrl: string | null = null;
+        let blockchainArbitrumUrl: string | null = null;
+        if (avalancheResult?.avalanche?.transaction_hash) {
+          blockchainAvalancheUrl = `https://testnet.snowtrace.io/tx/${avalancheResult.avalanche.transaction_hash}`;
+        }
+        if (avalancheResult?.arbitrum?.transaction_hash) {
+          blockchainArbitrumUrl = `https://sepolia.arbiscan.io/tx/${avalancheResult.arbitrum.transaction_hash}`;
+        }
+        const qrData = {
+          pinata: pinataResult.image_url,
+          avalanche: blockchainAvalancheUrl,
+          arbitrum: blockchainArbitrumUrl,
+        };
+        // Generar QR con los tres enlaces
+        const qrBuffer = await this.qrService.generateCustomQR(qrData);
+        // Subir QR a Pinata
+        const gatewayUrl = this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud';
+        const qrUpload = await this.pinataService.uploadFile(qrBuffer, {
+          name: `certificate-qr-${certificateId}.png`,
+          keyvalues: {
+            certificate_id: certificateId,
+            type: 'qr_code',
+            recipient_name: certificate.recipient_name
+          }
+        });
+        const qrUrl = `${gatewayUrl}/ipfs/${qrUpload.cid}`;
+        await this.updateQRUrl(certificateId, qrUrl);
 
         // Obtener certificado final completo
         const finalCertificate = await this.getCertificateById(certificateId);
 
         this.logger.log(`🎉 Certificate creation completed successfully: ${certificateId}`);
-        
+
+        // Helper para limpiar doble slash en URLs
+        const cleanUrl = (url: string) => url.replace(/([^:]\/)\/+/, '$1');
+
         return {
           success: true,
           certificate_id: certificateId,
@@ -437,16 +522,20 @@ export class CertificatesService {
           avalanche: avalancheResult,
           qr_url: qrUrl,
           progress: {
-            ...progress,
+            certificate_id: certificateId,
+            recipient_name: createDto.recipient_name,
             current_step: 'Completed',
+            error: null,
             completed_at: new Date().toISOString(),
           },
           urls: {
-            certificate_view: `${this.configService.get('FRONTEND_URL')}/certificate/${certificateId}`,
-            verification: `${this.configService.get('FRONTEND_URL')}/verify/${certificateId}`,
+            certificate_view: cleanUrl(`${this.configService.get('FRONTEND_URL')}/certificate/${certificateId}`),
+            verification: cleanUrl(`${this.configService.get('FRONTEND_URL')}/verify/${certificateId}`),
             image: pinataResult.image_url,
             metadata: pinataResult.metadata_url,
-            qr: qrUrl,
+            qr: qrData,
+            blockchain_avalanche_url: qrData.avalanche,
+            blockchain_arbitrum_url: qrData.arbitrum,
           },
         };
 
@@ -547,9 +636,28 @@ export class CertificatesService {
     this.logger.log(`✅ QR URL updated: ${certificateId}`);
   }
 
+  // Ensure URLs include http/https scheme; if missing, prefix with https://
+  private ensureHttpUrl(url: string): string {
+    if (!url) return url;
+    const trimmed = url.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  }
+
   private generateMetadata(certificate: Certificate, institutionName: string): CertificateMetadata {
+    const name = `Certificado - ${certificate.recipient_name}`;
+    const description = `Certificado de ${certificate.course_name} emitido por ${institutionName}`;
+    const attributes = [
+      { trait_type: 'Recipient', value: certificate.recipient_name },
+      { trait_type: 'Course', value: certificate.course_name },
+      { trait_type: 'Institution', value: institutionName },
+      { trait_type: 'Issued At', value: certificate.issued_at },
+    ];
+
     return {
       id: certificate.id,
+      name,
+      description,
       course_name: certificate.course_name,
       recipient_name: certificate.recipient_name,
       institution_name: institutionName,
@@ -558,6 +666,7 @@ export class CertificatesService {
       blockchain: 'avalanche',
       api_version: '2.0.0',
       created_at: new Date().toISOString(),
+      attributes,
     };
   }
 

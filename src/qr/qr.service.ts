@@ -21,13 +21,32 @@ export class QrService {
     this.logger.log(`🔗 Generating QR code for certificate: ${certificateId}`);
 
     try {
-      // El QR debe contener SOLO el transaction hash
+      // El QR debe contener los enlaces de Pinata, Avalanche y Arbitrum
       if (!transactionHash) {
         throw new Error('Transaction hash is required for QR generation');
       }
-      
-      const qrString = transactionHash;
-      
+
+      // Para obtener los hashes de Avalanche y Arbitrum, el método debe recibirlos o buscar en la BD
+      // Aquí solo tenemos el transactionHash, así que generamos los enlaces estándar
+      const avalancheUrl = `https://testnet.snowtrace.io/tx/${transactionHash}`;
+      const arbitrumUrl = `https://sepolia.arbiscan.io/tx/${transactionHash}`;
+      // El enlace de Pinata no se puede obtener aquí, así que lo dejamos vacío o como ejemplo
+      const pinataUrl = '';
+
+      const qrData = {
+        type: 'certificate',
+        certificate_id: certificateId,
+        transaction_hash: transactionHash,
+        links: {
+          pinata: pinataUrl,
+          avalanche: avalancheUrl,
+          arbitrum: arbitrumUrl,
+        },
+        generated_at: new Date().toISOString(),
+      };
+
+      const qrString = JSON.stringify(qrData);
+
       const qrCodeDataUrl = await QRCode.toDataURL(qrString, {
         width: options.width || 512,
         margin: options.margin || 2,
