@@ -416,11 +416,14 @@ export class CertificatesService {
         throw new Error('Certificate must have transaction_hash before generating QR');
       }
 
-      // Generar QR con solo el transaction_hash
-      const qrBuffer = await this.qrService.generateCertificateQR(
-        certificateId,
-        certificate.transaction_hash
-      );
+      // Build a frontend verification URL and encode it into the QR so the
+      // frontend can call /api/certificates/{id}/validate and render the data.
+      const frontendRaw = this.configService.get('FRONTEND_URL') || '';
+      const frontendUrl = frontendRaw ? this.ensureHttpUrl(frontendRaw).replace(/\/+$/, '') : '';
+      const verificationUrl = frontendUrl ? `${frontendUrl}/verify/${certificateId}` : `/verify/${certificateId}`;
+
+      // Generate QR that encodes the verification URL (frontend will fetch validation data)
+      const qrBuffer = await this.qrService.generateCustomQR(verificationUrl);
 
       // Subir QR a Pinata usando PinataService
       this.logger.log(`🔗 Uploading QR code to Pinata...`);
@@ -477,22 +480,12 @@ export class CertificatesService {
         // PASO 4: Generar QR
         this.logger.log(`🔗 Step 4/4: Generating QR code...`);
         progress.current_step = 'Generating QR code';
-        // Generar el objeto de URLs para el QR
-        let blockchainAvalancheUrl: string | null = null;
-        let blockchainArbitrumUrl: string | null = null;
-        if (avalancheResult?.avalanche?.transaction_hash) {
-          blockchainAvalancheUrl = `https://testnet.snowtrace.io/tx/${avalancheResult.avalanche.transaction_hash}`;
-        }
-        if (avalancheResult?.arbitrum?.transaction_hash) {
-          blockchainArbitrumUrl = `https://sepolia.arbiscan.io/tx/${avalancheResult.arbitrum.transaction_hash}`;
-        }
-        const qrData = {
-          pinata: pinataResult.image_url,
-          avalanche: blockchainAvalancheUrl,
-          arbitrum: blockchainArbitrumUrl,
-        };
-        // Generar QR con los tres enlaces
-        const qrBuffer = await this.qrService.generateCustomQR(qrData);
+  // Construir la URL de verificación frontend y generar un QR que la encodifique.
+  const frontendRaw = this.configService.get('FRONTEND_URL') || '';
+  const frontendUrl = frontendRaw ? this.ensureHttpUrl(frontendRaw).replace(/\/+$/, '') : '';
+  const verificationUrl = frontendUrl ? `${frontendUrl}/verify/${certificateId}` : `/verify/${certificateId}`;
+  // Generar QR con la URL de verificación (el frontend llamará a /api/certificates/{id}/validate)
+  const qrBuffer = await this.qrService.generateCustomQR(verificationUrl);
         // Subir QR a Pinata
         const gatewayUrl = this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud';
         const qrUpload = await this.pinataService.uploadFile(qrBuffer, {
@@ -508,6 +501,14 @@ export class CertificatesService {
 
         // Obtener certificado final completo
         const finalCertificate = await this.getCertificateById(certificateId);
+
+        // Reconstruir URLs de explorers a partir del resultado de mint
+        const blockchainAvalancheUrl = avalancheResult?.avalanche?.transaction_hash
+          ? `https://testnet.snowtrace.io/tx/${avalancheResult.avalanche.transaction_hash}`
+          : null;
+        const blockchainArbitrumUrl = avalancheResult?.arbitrum?.transaction_hash
+          ? `https://sepolia.arbiscan.io/tx/${avalancheResult.arbitrum.transaction_hash}`
+          : null;
 
         this.logger.log(`🎉 Certificate creation completed successfully: ${certificateId}`);
 
@@ -533,9 +534,9 @@ export class CertificatesService {
             verification: cleanUrl(`${this.configService.get('FRONTEND_URL')}/verify/${certificateId}`),
             image: pinataResult.image_url,
             metadata: pinataResult.metadata_url,
-            qr: qrData,
-            blockchain_avalanche_url: qrData.avalanche,
-            blockchain_arbitrum_url: qrData.arbitrum,
+            qr: verificationUrl,
+            blockchain_avalanche_url: blockchainAvalancheUrl,
+            blockchain_arbitrum_url: blockchainArbitrumUrl,
           },
         };
 
@@ -683,10 +684,20 @@ export class CertificatesService {
         database_check: true,
         pinata_check: !!(certificate.image_hash && certificate.metadata_hash),
         avalanche_check: !!certificate.transaction_hash,
-        qr_generated: !!certificate.qr_url,
         recipient_name: certificate.recipient_name,
         issued_at: certificate.issued_at,
-        verification_url: `${this.configService.get('FRONTEND_URL')}/verify/${certificateId}`,
+        // Normalize FRONTEND_URL to avoid double slashes and build verification URL
+        verification_url: (() => {
+          const gatewayUrl = this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud';
+          const frontendRaw = this.configService.get('FRONTEND_URL') || '';
+          const frontendUrl = frontendRaw ? this.ensureHttpUrl(frontendRaw).replace(/\/+$/, '') : '';
+          return frontendUrl ? `${frontendUrl}/verify/${certificateId}` : `/verify/${certificateId}`;
+        })(),
+        // IPFS and blockchain links
+        image_url: certificate.image_hash ? `${this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud'}/ipfs/${certificate.image_hash}` : null,
+        metadata_url: certificate.metadata_hash ? `${this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud'}/ipfs/${certificate.metadata_hash}` : null,
+        avalanche_explorer_url: certificate.transaction_hash ? `https://testnet.snowtrace.io/tx/${certificate.transaction_hash}` : null,
+        arbitrum_explorer_url: certificate.transaction_hash ? `https://sepolia.arbiscan.io/tx/${certificate.transaction_hash}` : null,
         verified_at: new Date().toISOString(),
       };
 
