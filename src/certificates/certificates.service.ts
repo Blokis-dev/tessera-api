@@ -66,6 +66,7 @@ export interface Certificate {
   image_hash?: string;
   metadata_hash?: string;
   transaction_hash?: string;
+  arbitrum_hash?: string;
   qr_url?: string;
   created_at: string;
 }
@@ -369,7 +370,7 @@ export class CertificatesService {
 
       this.logger.log(`✅ Certificate ${certificateId} sent to Avalanche successfully`);
       
-      // Construir respuesta con información de ambas redes si están disponibles
+  // Construir respuesta con información de ambas redes si están disponibles
       const avalancheResponse: AvalancheResponse = {
         transaction_hash: transactionHash,
       };
@@ -396,6 +397,11 @@ export class CertificatesService {
           contract_address: arbitrumData.contract_address,
           network: arbitrumData.network,
         };
+        // Guardar el hash de Arbitrum en la BD (nueva columna arbitrum_hash)
+        if (arbitrumData.transaction_hash) {
+          await this.updateArbitrumHash(certificateId, arbitrumData.transaction_hash);
+          this.logger.log(`✅ Arbitrum hash stored for certificate ${certificateId}: ${arbitrumData.transaction_hash}`);
+        }
       }
 
       return avalancheResponse;
@@ -637,6 +643,22 @@ export class CertificatesService {
     this.logger.log(`✅ QR URL updated: ${certificateId}`);
   }
 
+  // Guardar el hash de Arbitrum en la nueva columna arbitrum_hash de certificates
+  private async updateArbitrumHash(certificateId: string, arbitrumHash: string): Promise<void> {
+    const { error } = await this.supabaseService.client
+      .from('certificates')
+      .update({
+        arbitrum_hash: arbitrumHash,
+      })
+      .eq('id', certificateId);
+
+    if (error) {
+      throw new Error(`Failed to update Arbitrum hash: ${error.message}`);
+    }
+
+    this.logger.log(`✅ Arbitrum hash updated: ${certificateId}`);
+  }
+
   // Ensure URLs include http/https scheme; if missing, prefix with https://
   private ensureHttpUrl(url: string): string {
     if (!url) return url;
@@ -684,6 +706,7 @@ export class CertificatesService {
         database_check: true,
         pinata_check: !!(certificate.image_hash && certificate.metadata_hash),
         avalanche_check: !!certificate.transaction_hash,
+        arbitrum_check: !!certificate.arbitrum_hash,
         recipient_name: certificate.recipient_name,
         issued_at: certificate.issued_at,
         // Normalize FRONTEND_URL to avoid double slashes and build verification URL
@@ -697,7 +720,7 @@ export class CertificatesService {
         image_url: certificate.image_hash ? `${this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud'}/ipfs/${certificate.image_hash}` : null,
         metadata_url: certificate.metadata_hash ? `${this.configService.get('PINATA_GATEWAY_URL') || 'https://gateway.pinata.cloud'}/ipfs/${certificate.metadata_hash}` : null,
         avalanche_explorer_url: certificate.transaction_hash ? `https://testnet.snowtrace.io/tx/${certificate.transaction_hash}` : null,
-        arbitrum_explorer_url: certificate.transaction_hash ? `https://sepolia.arbiscan.io/tx/${certificate.transaction_hash}` : null,
+        arbitrum_explorer_url: certificate.arbitrum_hash ? `https://sepolia.arbiscan.io/tx/${certificate.arbitrum_hash}` : null,
         verified_at: new Date().toISOString(),
       };
 
